@@ -8,13 +8,22 @@ import makeWASocket, {
 import * as P from 'pino';
 import { Boom } from '@hapi/boom';
 import { DisconnectReason } from '@whiskeysockets/baileys';
-// no topo do arquivo bot.ts
-const qrcode = require('qrcode-terminal');
+import QRCode from 'qrcode';
 
-
-let sock: WASocket;
+let sock: WASocket | null = null;
+let lastQRCodeDataUrl: string | null = null;
 
 export async function startBot() {
+  if (sock) {
+    try {
+      await sock.logout();
+      sock.ws.close();
+    } catch (err) {
+      // ignorar erros
+    }
+    sock = null;
+  }
+
   const { state, saveCreds } = await useMultiFileAuthState('auth');
   const { version } = await fetchLatestBaileysVersion();
 
@@ -31,21 +40,23 @@ export async function startBot() {
 
   sock.ev.on('creds.update', saveCreds);
 
-  sock.ev.on('connection.update', (update) => {
+  sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
-      qrcode.generate(qr, { small: true });
+      lastQRCodeDataUrl = await QRCode.toDataURL(qr);
+      console.log('QR code atualizado');
     }
 
     if (connection === 'close') {
       const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
       console.log('Conexão encerrada. Reconectando...', shouldReconnect);
       if (shouldReconnect) {
-        startBot();
+        setTimeout(() => startBot(), 5000);
       }
     } else if (connection === 'open') {
       console.log('✅ Bot conectado ao WhatsApp');
+      lastQRCodeDataUrl = null; // QR não mais necessário
     }
   });
 }
@@ -55,4 +66,8 @@ export function getSocket(): WASocket {
     throw new Error('Socket ainda não inicializado');
   }
   return sock;
+}
+
+export function getQRCode(): string | null {
+  return lastQRCodeDataUrl;
 }

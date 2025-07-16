@@ -1,11 +1,22 @@
 import express from 'express';
-import { startBot, getSocket } from './bot';
+import { startBot, getSocket, getQRCode } from './bot';
 import { GROUPS } from './config';
 
 const app = express();
 const port = 3000;
 
 app.use(express.json());
+
+app.get('/qr', (req, res) => {
+  const qr = getQRCode();
+  if (!qr) {
+    return res.send('<h2>Bot já conectado ou QR Code indisponível</h2>');
+  }
+  res.send(`
+    <h1>Escaneie este QR Code para conectar</h1>
+    <img src="${qr}" alt="QR Code" />
+  `);
+});
 
 app.post('/send', async (req, res) => {
   try {
